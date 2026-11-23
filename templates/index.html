@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Ensures proper scaling and mobile responsiveness on phones -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Value for Money — Unit Price Calculator</title>
+    <!-- Loads Tailwind CSS via CDN for styling without writing custom CSS files -->
+    <script src="https://tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+    <!-- Centered container capped at max-width 2xl (672px) for clean mobile & desktop reading -->
+    <div class="max-w-2xl mx-auto px-4 py-8">
+        <header class="mb-6">
+            <h1 class="text-2xl font-bold text-slate-900">Value for Money Calculator</h1>
+            <p class="text-sm text-slate-600">Compare true unit prices across pack sizes and weights.</p>
+        </header>
+
+        <!-- Form submits all inputs via HTTP POST to the '/calculate' route in main.py -->
+        <form action="/calculate" method="post" class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-5">
+            
+            <!-- Category Selector Tabs (Weight / Volume / Count) -->
+            <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Comparison Type</label>
+                <div class="grid grid-cols-3 gap-2">
+                    <!-- Jinja2 loop creates the 3 radio button tabs dynamically -->
+                    {% for key, label in [('weight', 'Weight (kg/g)'), ('volume', 'Volume (L/ml)'), ('count', 'Count / Sheets')] %}
+                    <label class="cursor-pointer">
+                        <!-- Hidden radio input triggers JavaScript updateUnitDropdowns() when clicked -->
+                        <input type="radio" name="category" value="{{ key }}" class="peer sr-only"
+                               {% if selected_category == key %}checked{% endif %}
+                               onchange="updateUnitDropdowns(this.value)">
+                        <!-- Styled tab pill that turns emerald green when its sibling radio is checked -->
+                        <div class="text-center py-2 px-3 rounded-lg border text-sm font-medium peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:border-emerald-600 bg-slate-50 text-slate-700 border-slate-200">
+                            {{ label }}
+                        </div>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Container holding all product input cards (starts with 2 cards by default) -->
+            <div id="items-container" class="space-y-4">
+                {% for i in range(2) %}
+                <div class="item-row p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <!-- Optional product name input -->
+                        <input type="text" name="name" placeholder="Product name (optional, e.g. Brand A)"
+                               class="bg-transparent text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-none w-full">
+                        <!-- Only show a 'Remove' button on dynamically added rows (index > 1) -->
+                        {% if i > 1 %}
+                        <button type="button" onclick="this.closest('.item-row').remove()" class="text-xs text-rose-600 hover:underline">Remove</button>
+                        {% endif %}
+                    </div>
+
+                    <!-- 2-column grid on mobile, 4-column grid on larger screens -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Price (£)</label>
+                            <!-- inputmode="decimal" opens the numeric decimal keypad on phones -->
+                            <input type="number" name="price" step="0.01" min="0.01" inputmode="decimal" required placeholder="2.50"
+                                   class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Pack Qty</label>
+                            <!-- Defaults to 1 for single items; user changes to e.g. 6 for multipacks -->
+                            <input type="number" name="pack_qty" min="1" value="1" inputmode="numeric" required
+                                   class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Size Each</label>
+                            <input type="number" name="size" step="0.01" min="0.01" inputmode="decimal" required placeholder="500"
+                                   class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-1">Unit</label>
+                            <!-- Populated by Python on initial load and updated by JS when category changes -->
+                            <select name="unit" class="unit-select w-full rounded-md border border-slate-300 px-2 py-2 text-sm bg-white">
+                                {% for u in unit_config[selected_category]['units'].keys() %}
+                                <option value="{{ u }}">{{ u }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Action Buttons: Add Row (JavaScript) and Submit Form (Python) -->
+            <div class="flex flex-wrap gap-3 justify-between pt-2">
+                <button type="button" onclick="addRow()"
+                        class="px-4 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200">
+                    + Add Another Item
+                </button>
+                <button type="submit"
+                        class="px-6 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm">
+                    Compare Value
+                </button>
+            </div>
+        </form>
+
+        <!-- Results Section: Only renders after Python returns calculated 'results' -->
+        {% if results %}
+        <section class="mt-8 space-y-3">
+            <h2 class="text-lg font-bold text-slate-900">Comparison Results</h2>
+            <!-- Loop through sorted items (cheapest first) -->
+            {% for item in results %}
+            <!-- Highlight the winning card with an emerald green border and soft green background -->
+            <div class="p-4 rounded-xl border {% if item.is_best %}bg-emerald-50 border-emerald-400{% else %}bg-white border-slate-200{% endif %} flex items-center justify-between">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="font-bold text-slate-900">{{ item.name }}</span>
+                        {% if item.is_best %}
+                        <span class="text-xs font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-600 text-white">Best Value</span>
+                        {% endif %}
+                    </div>
+                    <!-- Displays original price and pack breakdown (e.g., £2.50 for 1 × 500g) -->
+                    <p class="text-xs text-slate-600 mt-0.5">
+                        £{{ "%.2f"|format(item.price) }} for {{ item.pack_qty }} × {{ item.size }}{{ item.unit }}
+                    </p>
+                </div>
+
+                <div class="text-right">
+                    <!-- Main normalized unit price (e.g., £5.00 / kg) -->
+                    <div class="text-lg font-bold text-slate-900">
+                        £{{ "%.2f"|format(item.unit_price) }} <span class="text-xs font-normal text-slate-500">/ {{ base_label }}</span>
+                    </div>
+                    <!-- Secondary sub-unit price (e.g., £0.50 / 100g) and percentage savings -->
+                    <div class="text-xs text-slate-500">
+                        £{{ "%.2f"|format(item.sub_unit_price) }} / {{ sub_label }}
+                        {% if item.savings_pct > 0 %}
+                        · <span class="text-emerald-700 font-semibold">Save {{ item.savings_pct }}%</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </section>
+        {% endif %}
+    </div>
+
+    <!-- Client-side JavaScript for instant UI updates without reloading the page -->
+    <script>
+        // Mirrors the unit lists from Python so dropdowns update immediately when switching tabs
+        const unitMap = {
+            weight: ['g', 'kg', 'oz', 'lb'],
+            volume: ['ml', 'cl', 'L', 'fl oz (UK)', 'pt (UK)'],
+            count: ['items', 'sheets', 'rolls']
+        };
+
+        // Helper to check which category radio button is currently selected
+        function getSelectedCategory() {
+            return document.querySelector('input[name="category"]:checked').value;
+        }
+
+        // Replaces all unit <select> options whenever the user switches between Weight, Volume, and Count
+        function updateUnitDropdowns(category) {
+            const units = unitMap[category] || unitMap.weight;
+            document.querySelectorAll('.unit-select').forEach(select => {
+                select.innerHTML = units.map(u => `<option value="${u}">${u}</option>`).join('');
+            });
+        }
+
+        // Clones the first product card to add a 3rd, 4th, etc. item row
+        function addRow() {
