@@ -1,0 +1,11 @@
+# Web framework that handles incoming browser requests and routing
+fastapi==0.115.0
+
+# ASGI web server that runs the FastAPI application
+uvicorn==0.30.6
+
+# Template engine that lets Python inject variables and loops into HTML
+jinja2==3.1.4
+
+# Required by FastAPI to parse HTML form submissions
+python-multipart==0.0.9
